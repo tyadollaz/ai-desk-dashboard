@@ -1,0 +1,45 @@
+# Run from the repository root:
+#   docker compose -f deploy/docker-compose.yml --env-file .env up -d --build
+# `.env` is NOT committed (copy .env.example). It must also define DOMAIN for Caddy.
+# Quote or escape `$` in OWNER_PASSWORD_HASH (argon2 hashes contain `$`): in .env wrap the
+# value in single quotes; compose interpolation additionally needs each `$` written as `$$`
+# if the value is ever placed directly in this file instead of env_file.
+name: ai-desk-dashboard
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      NODE_ENV: production
+      DATABASE_PATH: /data/dashboard.db
+      PORT: "3000"
+      HOST: 0.0.0.0
+      TRUST_PROXY: "true" # the app sits behind Caddy; trust X-Forwarded-For for rate limiting
+    volumes:
+      - desk-data:/data
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  desk-data:
+  caddy-data:
+  caddy-config:
