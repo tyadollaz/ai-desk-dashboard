@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.1
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx vitest run
+      - run: npx playwright install --with-deps chromium
+      # playwright.config.ts builds the app first and blanks every secret/provider variable,
+      # so no .env file is needed (none exists in CI).
+      - run: npx playwright test
+      - name: Upload Playwright output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-output
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  docker:
+    # amd64 = typical VPS; arm64 = Raspberry Pi 4/5 (64-bit OS).
+    name: docker (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t desk:ci .
+
+      - name: Production without secrets must refuse to start
+        run: |
+          if docker run --rm -e NODE_ENV=production desk:ci; then
+            echo "Container started without secrets; expected a non-zero exit" >&2
+            exit 1
+          fi
+          echo "Failed fast as expected"
+
+      - name: Create throwaway env file
+        run: |
+          umask 077
+          # Hash a throwaway password inside the image (prod dependency @node-rs/argon2).
+          HASH="$(printf '%s' "ci-throwaway-password" | docker run --rm -i desk:ci node -e "
+            let s='';process.stdin.on('data',d=>s+=d).on('end',async()=>{
+              const {hash}=require('@node-rs/argon2');
+              process.stdout.write(await hash(s,{memoryCost:19456,timeCost:2,parallelism:1}));
+            });")"
+          case "$HASH" in '$argon2id$'*) ;; *) echo "hash generation failed" >&2; exit 1;; esac
+          {
+            echo "NODE_ENV=production"
+            echo "APP_ORIGIN=http://localhost:3000"
+            echo "DEMO_MODE=true"
+            echo "SESSION_SECRET=$(openssl rand -base64 48 | tr -d '\n')"
+            echo "TOKEN_ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d '\n')"
+            # --env-file takes values literally (no quote handling), so no quotes here.
+            echo "OWNER_PASSWORD_HASH=$HASH"
+          } > "$RUNNER_TEMP/desk.env"
+
+      - name: Run container
+        run: |
+          docker run -d --name desk --env-file "$RUNNER_TEMP/desk.env" \
+            -v deskdata:/data -p 3000:3000 desk:ci
+
+      - name: Wait for health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/api/health; then echo; exit 0; fi
+            sleep 1
+          done
+          echo "Health check did not pass within 60s" >&2
+          exit 1
+
+      - name: Assert behaviour
+        run: |
+          code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
+          [ "$(code http://localhost:3000/api/dashboard)" = 401 ] || { echo "/api/dashboard not 401" >&2; exit 1; }
+          [ "$(code --path-as-is 'http://localhost:3000/%61pi/dashboard')" = 401 ] || { echo "encoded path not 401" >&2; exit 1; }
+          uid="$(docker exec desk id -u)"
+          [ "$uid" != 0 ] || { echo "container runs as root" >&2; exit 1; }
+          # DATABASE_PATH=/data/dashboard.db is set by the image and wins over the demo default.
+          docker exec desk test -f /data/dashboard.db || { echo "database not created in /data" >&2; docker exec desk ls -la /data >&2; exit 1; }
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs desk || true
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rm -f desk || true
+          rm -f "$RUNNER_TEMP/desk.env"

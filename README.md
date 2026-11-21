@@ -139,15 +139,15 @@ npm run test:e2e
 
 The supported target is one always-on Linux server running Docker Compose with a persistent volume. That can be a VPS or a home server; a Raspberry Pi (arm64) is plausible but untested. Static hosting does not work because the app needs the server and database. No specific vendor or free tier is promised.
 
-The Docker image has not yet been built or run. Docker was not available on the build machine, so treat the steps below as unverified.
+The container is built and smoke-tested in CI (.github/workflows/ci.yml).
 
-1. Install Docker and the Compose plugin on the server.
-2. Copy the repository to the server.
-3. Create `.env` with production values: `APP_ORIGIN=https://<domain>`, `DOMAIN=<domain>`, `DATABASE_PATH=/data/dashboard.db`, `TRUST_PROXY=true`, `NODE_ENV=production`, plus the secrets and provider keys above.
-4. Point the domain's DNS at the server and open ports 80 and 443.
-5. Run `docker compose -f deploy/docker-compose.yml up -d --build`. The compose file header suggests also passing `--env-file .env`, which `DOMAIN` interpolation needs when `.env` is not picked up automatically.
-6. Caddy obtains an HTTPS certificate automatically. The app itself is published on 127.0.0.1:3000 only.
-7. Change the Google redirect URI, in Google Cloud and in `GOOGLE_REDIRECT_URI`, to the https one, then reconnect.
+The full step-by-step runbook (domain, server hardening, Docker, `.env`, Google redirect URI, start, backups, updates, troubleshooting) is in [deploy/SERVER-SETUP.md](deploy/SERVER-SETUP.md). In short, with a production `.env` in the repository root:
+
+```
+docker compose -f deploy/docker-compose.yml --env-file .env up -d --build
+```
+
+Caddy obtains an HTTPS certificate automatically. The app itself is published on 127.0.0.1:3000 only.
 
 A hosted demo must be a separate deployment with its own database and `DEMO_MODE=true`. Never use the private deployment for it.
 
