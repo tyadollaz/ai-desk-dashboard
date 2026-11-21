@@ -137,7 +137,7 @@ npm run test:e2e
 
 ## Deployment
 
-The supported target is one always-on Linux server running Docker Compose with a persistent volume. That can be a VPS or a home server; a Raspberry Pi (arm64) is plausible but untested. Static hosting does not work because the app needs the server and database. No specific vendor or free tier is promised.
+The supported target is one always-on Linux server running Docker Compose with a persistent volume. That can be a VPS or a home machine such as a Raspberry Pi 4/5 on a 64-bit OS; CI builds and smoke-tests the image on both amd64 and arm64. To choose between them (costs, providers, Pi parts, remote access), see [deploy/HOSTING-GUIDE.md](deploy/HOSTING-GUIDE.md). Static hosting does not work because the app needs the server and database. No specific vendor or free tier is promised.
 
 The container is built and smoke-tested in CI (.github/workflows/ci.yml).
 
