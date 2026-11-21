@@ -45,7 +45,7 @@ export function allowedHostsFor(id: ProviderId, env: Record<string, string | und
     case 'google':
       return ['oauth2.googleapis.com', 'www.googleapis.com'];
     case 'garmin':
-      return [];
+      return ['personal.connectapi.garmin.com'];
   }
 }
 

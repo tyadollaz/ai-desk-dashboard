@@ -29,6 +29,19 @@ describe('http client', () => {
     expect(await (await client.request('https://api.example.com/x')).json()).toEqual({ a: 1 });
   });
 
+  it('403 with "Rate Limit Exceeded" body or X-Rate-Limit-Remaining <= 0 -> rate_limited; other 403 -> auth_failed', async () => {
+    const f = vi.fn(async () => new Response('403 Forbidden (Rate Limit Exceeded)', { status: 403, headers: { 'retry-after': '30' } }));
+    let e = await rejects(mk(f).client.request('https://api.example.com/x'));
+    expect(e).toMatchObject({ code: 'rate_limited', opts: { retryAfterMs: 30_000 } });
+    expect(e.message).not.toMatch(/Forbidden/);
+    const g = vi.fn(async () => new Response('', { status: 403, headers: { 'x-rate-limit-remaining': '0' } }));
+    e = await rejects(mk(g).client.request('https://api.example.com/x'));
+    expect(e).toMatchObject({ code: 'rate_limited', opts: { retryAfterMs: 60_000 } });
+    const h = vi.fn(async () => new Response('Invalid access token', { status: 403 }));
+    e = await rejects(mk(h).client.request('https://api.example.com/x'));
+    expect(e.code).toBe('auth_failed');
+  });
+
   it('429 -> rate_limited honoring Retry-After seconds and HTTP-date; default 60s', async () => {
     let header: string | null = '120';
     const f = vi.fn(async () => new Response('', { status: 429, headers: header ? { 'retry-after': header } : {} }));

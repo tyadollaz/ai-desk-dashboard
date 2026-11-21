@@ -20,7 +20,7 @@ export interface HttpClient {
    * network/5xx, Retry-After on 429 (throws ProviderError 'rate_limited' with retryAfterMs),
    * no redirects to other hosts, never logs headers. 401/403 => ProviderError 'auth_failed' (not retried).
    */
-  request(url: string, init?: { method?: 'GET' | 'POST'; headers?: Record<string, string>; body?: string }): Promise<HttpResponse>;
+  request(url: string, init?: { method?: 'GET' | 'POST'; headers?: Record<string, string>; body?: string; acceptStatuses?: number[]; signal?: AbortSignal }): Promise<HttpResponse>;
 }
 export interface HttpResponse {
   status: number;
@@ -62,8 +62,8 @@ export interface ProviderAdapter<K extends ProviderId = ProviderId> {
   mode: 'live' | 'demo';
   /** Cheap, synchronous-ish readiness check from env/settings/token presence. No network. */
   setupStatus(settings: Settings): Promise<SetupStatus>;
-  /** Fetch & normalize. Throw ProviderError on failure. Must not mutate settings. */
-  fetch(settings: Settings, signal: AbortSignal): Promise<FetchResult<ProviderDataMap[K]>>;
+  /** Fetch & normalize. Throw ProviderError on failure. Must not mutate settings. `previous` is the last successful data for the same config (partial-failure carry-forward). */
+  fetch(settings: Settings, signal: AbortSignal, previous?: ProviderDataMap[K] | null): Promise<FetchResult<ProviderDataMap[K]>>;
   /** Optional: provider-specific freshness override (e.g. weather expiry at validity end). */
   isExpired?(result: FetchResult<ProviderDataMap[K]>, now: Date): boolean;
   /** Optional: cache key so a settings change (e.g. different stops) invalidates the snapshot. */

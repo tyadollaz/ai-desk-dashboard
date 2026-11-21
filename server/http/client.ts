@@ -18,6 +18,8 @@ export interface RequestInitEx {
   body?: string;
   /** Caller cancellation, combined with the internal timeout. */
   signal?: AbortSignal;
+  /** Non-2xx statuses (other than 429/5xx/redirects) to return to the caller instead of throwing. */
+  acceptStatuses?: number[];
 }
 
 const MAX_REDIRECTS = 3;
@@ -110,6 +112,43 @@ export function createHttpClient(opts: HttpClientOptions): HttpClient {
     }
   }
 
+  function wrap(res: Response): HttpResponse {
+    return {
+      status: res.status,
+      headers: res.headers,
+      async json() {
+        try {
+          return await res.json();
+        } catch {
+          throw new ProviderError('malformed', 'The service returned an unreadable response');
+        }
+      },
+      text: () => res.text(),
+    };
+  }
+
+  /** Canvas signals throttling as 403 "Rate Limit Exceeded". Reads at most ~2 KB of the body; never exposes it. */
+  async function looksRateLimited(res: Response): Promise<boolean> {
+    const remaining = res.headers.get('x-rate-limit-remaining');
+    const headerSaysLimited = remaining !== null && remaining.trim() !== '' && Number(remaining) <= 0;
+    let text = '';
+    try {
+      const reader = res.body?.getReader();
+      if (reader) {
+        const decoder = new TextDecoder();
+        while (text.length < 2048) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          text += decoder.decode(value, { stream: true });
+        }
+        void reader.cancel().catch(() => undefined);
+      }
+    } catch {
+      /* unreadable body: fall back to headers only */
+    }
+    return headerSaysLimited || /rate limit exceeded/i.test(text.slice(0, 2048));
+  }
+
   return {
     async request(rawUrl, init: RequestInitEx = {}): Promise<HttpResponse> {
       let method = init.method ?? 'GET';
@@ -142,6 +181,11 @@ export function createHttpClient(opts: HttpClientOptions): HttpClient {
           const retryAfterMs = parseRetryAfter(res.headers.get('retry-after'), now().getTime());
           throw new ProviderError('rate_limited', 'The service is rate limiting requests; try again later', { retryAfterMs });
         }
+        if (init.acceptStatuses?.includes(res.status)) return wrap(res);
+        if (res.status === 403 && (await looksRateLimited(res))) {
+          const retryAfterMs = parseRetryAfter(res.headers.get('retry-after'), now().getTime());
+          throw new ProviderError('rate_limited', 'The service is rate limiting requests; try again later', { retryAfterMs });
+        }
         if (res.status === 401 || res.status === 403) {
           void res.body?.cancel().catch(() => undefined);
           throw new ProviderError('auth_failed', 'The service rejected the credentials');
@@ -150,18 +194,7 @@ export function createHttpClient(opts: HttpClientOptions): HttpClient {
           void res.body?.cancel().catch(() => undefined);
           throw new ProviderError('upstream', `The service returned an unexpected response (HTTP ${res.status})`);
         }
-        return {
-          status: res.status,
-          headers: res.headers,
-          async json() {
-            try {
-              return await res.json();
-            } catch {
-              throw new ProviderError('malformed', 'The service returned an unreadable response');
-            }
-          },
-          text: () => res.text(),
-        };
+        return wrap(res);
       }
     },
   };

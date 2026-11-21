@@ -98,24 +98,29 @@ export class ProviderManager {
       st.configKey = key;
       st.snapshot = null;
       st.error = null;
-      st.cooldownUntil = null;
+      // A Retry-After cooldown is an upstream obligation, not a property of the config: keep it across config changes.
       st.failures = 0;
       st.blocked = false;
       st.lastAttemptAt = null;
       st.fetchState = 'idle';
       this.deps.snapshots.delete(id);
       this.deps.syncMeta.delete(id);
+      if (st.cooldownUntil) this.persistMeta(id);
     }
     const enabled = settings.providers[id].enabled;
-    if (enabled && !st.enabled) st.blocked = false;
+    if (enabled !== st.enabled) st.blocked = false;
     st.enabled = enabled;
   }
 
-  /** Call after settings or stored tokens change so blocked providers may retry. */
-  onSettingsChanged(): void {
+  /**
+   * Call after settings or stored tokens change. Providers whose configKey or enabled flag changed are re-synced
+   * (which clears their post-auth-failure block); `tokensChanged` additionally clears the block for providers whose
+   * stored tokens/credentials just changed (Google OAuth callback, Garmin login). `true` means all providers.
+   */
+  onSettingsChanged(opts: { tokensChanged?: ProviderId[] | true } = {}): void {
     for (const id of PROVIDER_IDS) {
       this.sync(id);
-      this.st(id).blocked = false;
+      if (opts.tokensChanged === true || opts.tokensChanged?.includes(id)) this.st(id).blocked = false;
     }
   }
 
@@ -165,6 +170,8 @@ export class ProviderManager {
       if (adapter.isExpired?.(result, nowDate)) freshness = 'expired';
       else if (t - Date.parse(snap.lastSuccessAt) > REFRESH_POLICY[id].staleAfterMs) freshness = 'stale';
       else freshness = 'fresh';
+      // Data kept across an auth failure is not trustworthy as current.
+      if (freshness === 'fresh' && connection === 'reauth_required') freshness = 'stale';
     }
 
     const nextAllowed = Math.max(st.cooldownUntil ?? 0, st.lastAttemptAt ? st.lastAttemptAt + MANUAL_MIN_SPACING_MS : 0);
@@ -239,7 +246,7 @@ export class ProviderManager {
     st.inFlight = (async () => {
       await null; // ensure st.inFlight is assigned before any synchronous failure reaches `finally`
       try {
-        const result = await adapter.fetch(settings, signal);
+        const result = await adapter.fetch(settings, signal, st.snapshot?.data as never);
         if (st.gen !== gen) return;
         const at = this.deps.now();
         st.snapshot = {
