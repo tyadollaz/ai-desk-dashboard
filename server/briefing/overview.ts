@@ -5,12 +5,13 @@ import type {
   CalendarData,
   CanvasData,
   Fact,
+  GarminData,
   ProviderId,
   Settings,
   WeatherData,
   WidgetEnvelope,
 } from '../../shared/contracts.js';
-import { formatDateOnly, formatSgtDateTime, formatSgtTime } from '../util/time.js';
+import { formatDateOnly, formatSgtDateTime, formatSgtTime, sgtDate } from '../util/time.js';
 
 type Envelopes = { [K in ProviderId]: WidgetEnvelope };
 
@@ -22,41 +23,68 @@ function startMs(t: { dateTime: string | null; date: string | null }): number | 
   return null;
 }
 
+/** A fact plus the wording used when its sensitive content (titles) must not leave the server. */
+export interface BuiltFact extends Fact {
+  /** Title-free wording for 'title' facts; when absent the fact is dropped if titles are not allowed. */
+  safeText?: string;
+}
+
+/** Fact kinds shown by the deterministic Overview (extras exist only as input for the AI briefing). */
+const OVERVIEW_KINDS = new Set(['next_event', 'next_deadline', 'forecast']);
+
 /** Deterministic facts; all wording and date formatting happen here, never in a model. */
-export function buildFacts(envelopes: Envelopes, _settings: Settings, now: Date): Fact[] {
-  const facts: Fact[] = [];
-  const add = (f: Omit<Fact, 'id'>) => facts.push({ id: `f${facts.length + 1}`, ...f });
+export function buildFacts(envelopes: Envelopes, _settings: Settings, now: Date): BuiltFact[] {
+  const facts: BuiltFact[] = [];
+  const add = (f: Omit<BuiltFact, 'id'>) => facts.push({ id: `f${facts.length + 1}`, ...f });
   const t = now.getTime();
+  const extras: Array<Omit<BuiltFact, 'id'>> = [];
 
   const cal = envelopes.google;
   if (usable(cal)) {
-    const events = (cal.data as CalendarData).events
+    const all = (cal.data as CalendarData).events
       .map((e) => ({ e, s: startMs(e.start) }))
-      .filter((x): x is { e: (typeof x)['e']; s: number } => x.s !== null && x.s >= t)
-      .sort((a, b) => a.s - b.s);
+      .filter((x): x is { e: (typeof x)['e']; s: number } => x.s !== null);
+    const events = all.filter((x) => x.s >= t).sort((a, b) => a.s - b.s);
     const next = events[0];
     if (next) {
       const title = next.e.title ?? 'Untitled event';
       const when = next.e.allDay && next.e.start.date ? `${formatDateOnly(next.e.start.date)} (all day)` : formatSgtDateTime(new Date(next.s));
-      add({ source: 'google', kind: 'next_event', text: `Next event: ${title}, ${when} SGT`, sensitive: 'title' });
+      add({
+        source: 'google',
+        kind: 'next_event',
+        text: `Next event: ${title}, ${when} SGT`,
+        safeText: `Next calendar event: ${when} SGT`,
+        sensitive: 'title',
+      });
+    }
+    const today = sgtDate(now);
+    const todayCount = all.filter((x) => sgtDate(new Date(x.s)) === today).length;
+    if (todayCount > 0) {
+      extras.push({ source: 'google', kind: 'events_today', text: `Calendar events today: ${todayCount}`, sensitive: 'none' });
     }
   }
 
   const canvas = envelopes.canvas;
   if (usable(canvas)) {
-    const next = (canvas.data as CanvasData).items
+    const upcoming = (canvas.data as CanvasData).items
       .filter((i) => !i.isReminder && i.dueAt !== null && Date.parse(i.dueAt) >= t)
       .filter((i) => i.completion === 'not_submitted' || i.completion === 'unknown')
-      .sort((a, b) => Date.parse(a.dueAt as string) - Date.parse(b.dueAt as string))[0];
-    if (next && next.dueAt) {
-      const course = next.courseName ? ` (${next.courseName})` : '';
-      add({
+      .sort((a, b) => Date.parse(a.dueAt as string) - Date.parse(b.dueAt as string))
+      .slice(0, 3);
+    upcoming.forEach((item, idx) => {
+      const due = formatSgtDateTime(new Date(item.dueAt as string));
+      const course = item.courseName ? ` (${item.courseName})` : '';
+      const first = idx === 0;
+      const fact: Omit<BuiltFact, 'id'> = {
         source: 'canvas',
-        kind: 'next_deadline',
-        text: `Next known Canvas deadline: ${next.title}${course}, due ${formatSgtDateTime(new Date(next.dueAt))} SGT`,
+        kind: first ? 'next_deadline' : 'later_deadline',
+        text: first ? `Next known Canvas deadline: ${item.title}${course}, due ${due} SGT` : `Later Canvas deadline: ${item.title}${course}, due ${due} SGT`,
+        safeText: first ? `Next known Canvas deadline: due ${due} SGT` : `Later Canvas deadline: due ${due} SGT`,
         sensitive: 'title',
-      });
-    }
+      };
+      if (first) add(fact);
+      else extras.push(fact);
+    });
   }
 
   const weather = envelopes.weather;
@@ -71,6 +99,22 @@ export function buildFacts(envelopes: Envelopes, _settings: Settings, now: Date)
       });
     }
   }
+
+  const garmin = envelopes.garmin;
+  if (usable(garmin)) {
+    const g = garmin.data as GarminData;
+    if (g.weekRunningDistanceM !== null) {
+      const partial = g.weekCoverage && !g.weekCoverage.complete ? ' (partial week data)' : '';
+      extras.push({
+        source: 'garmin',
+        kind: 'week_running_distance',
+        text: `Running distance this week: ${(g.weekRunningDistanceM / 1000).toFixed(1)} km${partial}`,
+        sensitive: 'health',
+      });
+    }
+  }
+
+  for (const x of extras) add(x);
   return facts;
 }
 
@@ -91,7 +135,7 @@ export function factsHash(facts: Fact[]): string {
 }
 
 export function buildOverview(envelopes: Envelopes, settings: Settings, now: Date): Briefing {
-  const facts = buildFacts(envelopes, settings, now);
+  const facts = buildFacts(envelopes, settings, now).filter((f) => OVERVIEW_KINDS.has(f.kind));
   const bullets: BriefingBullet[] = facts.slice(0, 3).map((f) => ({ text: f.text, factIds: [f.id], sources: [f.source] }));
   if (bullets.length === 0) {
     bullets.push({ text: 'Nothing upcoming to summarise yet.', factIds: [], sources: [] });
