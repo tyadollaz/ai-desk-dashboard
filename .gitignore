@@ -9,3 +9,5 @@ playwright-report
 .DS_Store
 docs/garmin-personal-api.pdf
 docs/INTEGRATION-STATUS.md
+.unlazy/
+.taste-skill/

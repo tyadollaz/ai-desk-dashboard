@@ -5,7 +5,9 @@ import { relativeDue } from '../../../shared/display/time';
 import { safeExternalUrl } from '../../../shared/display/url';
 import Card, { hasData, type WidgetProps } from './Card';
 
-function Item({ item, when, privacy }: { item: CanvasItem; when: string; privacy: boolean }) {
+type Tone = 'warn' | 'bad' | 'info' | 'idle' | 'ok';
+
+function Item({ item, when, privacy, status, tone }: { item: CanvasItem; when: string; privacy: boolean; status: string; tone: Tone }) {
   const url = privacy ? null : safeExternalUrl(item.htmlUrl);
   const title = privacy ? MASK : item.title;
   return (
@@ -20,19 +22,16 @@ function Item({ item, when, privacy }: { item: CanvasItem; when: string; privacy
             title
           )}
         </span>
-        <span className="muted">{privacy ? MASK : (item.courseName ?? 'No course')}</span>
+        <span className="muted row-sub">
+          {privacy ? MASK : (item.courseName ?? 'No course')}
+          {when && <span className="row-when"> · {when}</span>}
+        </span>
       </div>
-      {when && <span className="row-when">{when}</span>}
+      <span className="pill">
+        <i className={`dot dot-${tone}`} aria-hidden="true" />
+        {status}
+      </span>
     </li>
-  );
-}
-
-function Group({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="group">
-      <h3>{title}</h3>
-      <ul className="plain">{children}</ul>
-    </div>
   );
 }
 
@@ -43,40 +42,34 @@ function CanvasBody({ data, now, privacy }: { data: CanvasData; now: number; pri
     <>
       <p className="coverage muted">{canvasCoverageLabel(data)}</p>
       {none && <p className="empty">Nothing due in this window.</p>}
-      {g.dueSoon.length > 0 && (
-        <Group title="Due soon">
-          {g.dueSoon.map((i) => (
-            <Item key={i.id} item={i} privacy={privacy} when={relativeDue(i.dueAt, now)} />
-          ))}
-        </Group>
-      )}
-      {g.pastDue.length > 0 && (
-        <Group title="Past due — check status">
-          {g.pastDue.map((i) => (
-            <Item key={i.id} item={i} privacy={privacy} when={relativeDue(i.dueAt, now)} />
-          ))}
-        </Group>
-      )}
-      {g.reminders.length > 0 && (
-        <Group title="Reminders">
-          {g.reminders.map((i) => (
-            <Item key={i.id} item={i} privacy={privacy} when={i.plannerDate ? relativeDue(i.plannerDate, now) : ''} />
-          ))}
-        </Group>
-      )}
-      {g.noDue.length > 0 && (
-        <Group title="No due date">
-          {g.noDue.map((i) => (
-            <Item key={i.id} item={i} privacy={privacy} when="" />
-          ))}
-        </Group>
+      {!none && (
+        <>
+          <div className="table-head" aria-hidden="true">
+            <span>Item · due</span>
+            <span>Status</span>
+          </div>
+          <ul className="plain table">
+            {g.dueSoon.map((i) => (
+              <Item key={i.id} item={i} privacy={privacy} when={relativeDue(i.dueAt, now)} status="Due soon" tone="warn" />
+            ))}
+            {g.pastDue.map((i) => (
+              <Item key={i.id} item={i} privacy={privacy} when={relativeDue(i.dueAt, now)} status="Past due — check status" tone="bad" />
+            ))}
+            {g.reminders.map((i) => (
+              <Item key={i.id} item={i} privacy={privacy} when={i.plannerDate ? relativeDue(i.plannerDate, now) : ''} status="Reminder" tone="info" />
+            ))}
+            {g.noDue.map((i) => (
+              <Item key={i.id} item={i} privacy={privacy} when="" status="No due date" tone="idle" />
+            ))}
+          </ul>
+        </>
       )}
       {g.done.length > 0 && (
         <details className="group">
           <summary>Submitted/complete ({g.done.length})</summary>
-          <ul className="plain">
+          <ul className="plain table">
             {g.done.map((i) => (
-              <Item key={i.id} item={i} privacy={privacy} when="" />
+              <Item key={i.id} item={i} privacy={privacy} when="" status="Done" tone="ok" />
             ))}
           </ul>
         </details>

@@ -63,6 +63,56 @@ test.describe('1024x600', () => {
   });
 });
 
+test.describe('1280x720', () => {
+  test.use({ viewport: { width: 1280, height: 720 } });
+  test('clock, next event, next deadline, bus and weather fully visible; every card top on screen', async ({ page }) => {
+    await login(page);
+    await waitForCards(page);
+    await noHorizontalOverflow(page);
+    const vh = 720;
+    const sels: Record<string, string> = {
+      time: 'header.app-header .time',
+      'next event (overview bullet)': '.briefing li:has-text("Next event")',
+      'next deadline (overview bullet)': '.briefing li:has-text("Canvas deadline")',
+      bus: 'section.card-lta',
+      weather: 'section.card-weather',
+    };
+    const failures: string[] = [];
+    for (const [name, sel] of Object.entries(sels)) {
+      const loc = page.locator(sel).first();
+      if ((await loc.count()) === 0) {
+        failures.push(`${name}: not found`);
+        continue;
+      }
+      const b = (await loc.boundingBox())!;
+      if (b.y < 0 || b.y + b.height > vh) failures.push(`${name}: y=${Math.round(b.y)} bottom=${Math.round(b.y + b.height)}`);
+    }
+    expect(failures, failures.join('; ')).toEqual([]);
+    for (const c of ['lta', 'weather', 'google', 'canvas', 'garmin']) {
+      const b = await box(page, `section.card-${c}`);
+      expect(b.y, `${c} top inside viewport`).toBeLessThan(vh);
+    }
+  });
+});
+
+test.describe('theme toggle', () => {
+  test.use({ viewport: { width: 1280, height: 720 } });
+  test('switching to dark sets data-theme, changes the background, and survives a reload', async ({ page }) => {
+    await login(page);
+    await waitForCards(page);
+    const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    const before = await bg();
+    const toggle = page.getByRole('button', { name: /^Theme:/ });
+    for (let i = 0; i < 3 && (await page.locator('html').getAttribute('data-theme')) !== 'dark'; i++) await toggle.click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    expect(await bg()).not.toBe(before);
+    await page.reload();
+    await waitForCards(page);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    expect(await bg()).not.toBe(before);
+  });
+});
+
 test.describe('390x844', () => {
   test.use({ viewport: { width: 390, height: 844 } });
   test('no overflow and cards stack in a single column', async ({ page }) => {

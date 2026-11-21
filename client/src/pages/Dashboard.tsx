@@ -9,6 +9,7 @@ import CanvasCard from '../components/CanvasCard';
 import ErrorBoundary from '../components/ErrorBoundary';
 import GarminCard from '../components/GarminCard';
 import Header from '../components/Header';
+import Shell from '../components/Shell';
 import WeatherCard from '../components/WeatherCard';
 import { useNow } from '../useNow';
 
@@ -157,42 +158,47 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="page">
-      <Header
-        now={now}
-        privacy={privacy}
-        onTogglePrivacy={() => void togglePrivacy()}
-        onRefreshAll={() => void refreshAll()}
-        refreshingAll={refreshingAll}
-        onLogout={() => void logout()}
-      />
-      {data?.mode === 'demo' && (
-        <p className="banner" role="status">
-          Demo mode — synthetic data, no provider is connected
-        </p>
-      )}
-      {error && (
-        <p className="banner banner-error" role="alert">
-          {error}
-        </p>
-      )}
-      {!data ? (
-        <p className="boot" role="status">
-          Loading dashboard…
-        </p>
-      ) : (
-        <>
-          <BriefingStrip overview={data.overview} aiBriefing={data.aiBriefing} ai={data.ai} privacy={privacy} onGenerate={generate} />
-          {settings && widgets.length === 0 && <p className="empty">All widgets are hidden. Turn some on in Settings.</p>}
-          <main className="grid">
-            {widgets.map((w) => (
-              <div key={w.id} className={`cell cell-${w.id}`}>
-                <ErrorBoundary label={w.id}>{renderWidget(w.id)}</ErrorBoundary>
+    <Shell
+      onLogout={() => void logout()}
+      dashboard={{
+        privacy,
+        onTogglePrivacy: () => void togglePrivacy(),
+        onRefreshAll: () => void refreshAll(),
+        refreshingAll,
+      }}
+    >
+      <div className="page">
+        <Header now={now} />
+        {data?.mode === 'demo' && (
+          <p className="banner" role="status">
+            Demo mode — synthetic data, no provider is connected
+          </p>
+        )}
+        {error && (
+          <p className="banner banner-error" role="alert">
+            {error}
+          </p>
+        )}
+        {!data ? (
+          <p className="boot" role="status">
+            Loading dashboard…
+          </p>
+        ) : (
+          <>
+            {settings && widgets.length === 0 && <p className="empty">All widgets are hidden. Turn some on in Settings.</p>}
+            <main className="grid">
+              <div className="cell cell-briefing">
+                <BriefingStrip overview={data.overview} aiBriefing={data.aiBriefing} ai={data.ai} privacy={privacy} onGenerate={generate} />
               </div>
-            ))}
-          </main>
-        </>
-      )}
-    </div>
+              {widgets.map((w) => (
+                <div key={w.id} className={`cell cell-${w.id}`}>
+                  <ErrorBoundary label={w.id}>{renderWidget(w.id)}</ErrorBoundary>
+                </div>
+              ))}
+            </main>
+          </>
+        )}
+      </div>
+    </Shell>
   );
 }

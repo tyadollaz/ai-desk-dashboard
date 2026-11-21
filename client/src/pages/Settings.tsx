@@ -1,14 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
-import {
-  PROVIDER_IDS,
-  type ProviderId,
-  type Settings,
-  type SettingsResponse,
-  type WidgetId,
-} from '../../../shared/contracts';
+import { Link, useNavigate } from 'react-router-dom';
+import { PROVIDER_IDS, type ProviderId, type Settings, type SettingsResponse, type WidgetId } from '../../../shared/contracts';
 import { ApiError, api } from '../api';
 import { providerName } from '../components/Card';
+import Shell from '../components/Shell';
 
 interface StopDraft {
   code: string;
@@ -40,6 +35,7 @@ function describeIssues(body: unknown): string[] {
 }
 
 export default function SettingsPage() {
+  const navigate = useNavigate();
   const [resp, setResp] = useState<SettingsResponse | null>(null);
   const [draft, setDraft] = useState<Settings | null>(null);
   const [stops, setStops] = useState<StopDraft[]>([]);
@@ -52,9 +48,7 @@ export default function SettingsPage() {
   function adopt(r: SettingsResponse) {
     setResp(r);
     setDraft(r.settings);
-    setStops(
-      r.settings.bus.stops.map((s) => ({ code: s.code, nickname: s.nickname ?? '', services: s.services.join(', ') })),
-    );
+    setStops(r.settings.bus.stops.map((s) => ({ code: s.code, nickname: s.nickname ?? '', services: s.services.join(', ') })));
   }
 
   useEffect(() => {
@@ -72,8 +66,22 @@ export default function SettingsPage() {
     };
   }, []);
 
+  async function logout() {
+    try {
+      await api.logout();
+    } catch {
+      /* leave anyway */
+    }
+    navigate('/login', { replace: true });
+  }
+
   if (loadError) return <p className="boot form-error">{loadError}</p>;
-  if (!draft || !resp) return <p className="boot" role="status">Loading settings…</p>;
+  if (!draft || !resp)
+    return (
+      <p className="boot" role="status">
+        Loading settings…
+      </p>
+    );
 
   const set = (patch: Partial<Settings>) => setDraft({ ...draft, ...patch });
 
@@ -137,211 +145,227 @@ export default function SettingsPage() {
   const areaOptions = [...new Set([...(draft.weather.area ? [draft.weather.area] : []), ...areas])].sort();
 
   return (
-    <div className="page settings">
-      <header className="app-header">
-        <h1>Settings</h1>
-        <Link className="btn" to="/">
-          Back to dashboard
-        </Link>
-      </header>
-      <form onSubmit={save} className="settings-form">
-        <fieldset>
-          <legend>Widgets</legend>
-          <ul className="plain">
-            {draft.widgets.map((w, i) => (
-              <li key={w.id} className="setting-row">
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={w.visible}
-                    onChange={(e) => set({ widgets: draft.widgets.map((x) => (x.id === w.id ? { ...x, visible: e.target.checked } : x)) })}
-                  />
-                  {WIDGET_NAMES[w.id]}
-                </label>
-                <span className="btn-group">
-                  <button type="button" className="btn" disabled={i === 0} onClick={() => moveWidget(i, -1)} aria-label={`Move ${WIDGET_NAMES[w.id]} up`}>
-                    Up
-                  </button>
-                  <button
-                    type="button"
-                    className="btn"
-                    disabled={i === draft.widgets.length - 1}
-                    onClick={() => moveWidget(i, 1)}
-                    aria-label={`Move ${WIDGET_NAMES[w.id]} down`}
-                  >
-                    Down
-                  </button>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </fieldset>
-
-        <fieldset>
-          <legend>Bus stops (up to 3)</legend>
-          {stops.map((s, i) => (
-            <div key={i} className="stop-edit">
-              <label>
-                Stop code (5 digits)
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="\d{5}"
-                  maxLength={5}
-                  value={s.code}
-                  onChange={(e) => setStops(stops.map((x, j) => (j === i ? { ...x, code: e.target.value.replace(/\D/g, '') } : x)))}
-                />
-              </label>
-              <label>
-                Nickname
-                <input
-                  type="text"
-                  maxLength={40}
-                  value={s.nickname}
-                  onChange={(e) => setStops(stops.map((x, j) => (j === i ? { ...x, nickname: e.target.value } : x)))}
-                />
-              </label>
-              <label>
-                Services (comma-separated, blank for all)
-                <input
-                  type="text"
-                  placeholder="e.g. 36, 36A, 124"
-                  value={s.services}
-                  onChange={(e) => setStops(stops.map((x, j) => (j === i ? { ...x, services: e.target.value } : x)))}
-                />
-              </label>
-              <button type="button" className="btn" onClick={() => setStops(stops.filter((_, j) => j !== i))}>
-                Remove stop
-              </button>
-            </div>
-          ))}
-          {stops.length < 3 && (
-            <button type="button" className="btn" onClick={() => setStops([...stops, { code: '', nickname: '', services: '' }])}>
-              Add bus stop
-            </button>
-          )}
-        </fieldset>
-
-        <fieldset>
-          <legend>Weather area</legend>
-          {areaOptions.length === 0 ? (
-            <p className="muted">Forecast areas appear here after the first weather fetch. Wait a moment, then reload this page.</p>
-          ) : (
-            <label>
-              Forecast area
-              <select value={draft.weather.area ?? ''} onChange={(e) => set({ weather: { area: e.target.value === '' ? null : e.target.value } })}>
-                <option value="">Not chosen</option>
-                {areaOptions.map((a) => (
-                  <option key={a} value={a}>
-                    {a}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-        </fieldset>
-
-        <fieldset>
-          <legend>Google Calendar IDs</legend>
-          {draft.calendar.calendarIds.map((c, i) => (
-            <div key={i} className="inline-row">
-              <input
-                type="text"
-                aria-label={`Calendar ID ${i + 1}`}
-                value={c}
-                onChange={(e) => set({ calendar: { calendarIds: draft.calendar.calendarIds.map((x, j) => (j === i ? e.target.value : x)) } })}
-              />
-              <button
-                type="button"
-                className="btn"
-                disabled={draft.calendar.calendarIds.length <= 1}
-                onClick={() => set({ calendar: { calendarIds: draft.calendar.calendarIds.filter((_, j) => j !== i) } })}
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-          <button type="button" className="btn" onClick={() => set({ calendar: { calendarIds: [...draft.calendar.calendarIds, ''] } })}>
-            Add calendar ID
-          </button>
-          <p className="muted">Use "primary" for your main calendar.</p>
-        </fieldset>
-
-        <fieldset>
-          <legend>Providers</legend>
-          <ul className="plain">
-            {PROVIDER_IDS.map((id) => {
-              const setup = resp.providerSetup[id];
-              return (
-                <li key={id} className="provider-row">
-                  <div>
-                    <strong>{providerName(id)}</strong>
-                    <p className="muted">{setup.configured ? 'Configured' : `Setup needed: ${setup.requirement ?? 'not configured'}`}</p>
-                  </div>
+    <Shell onLogout={() => void logout()}>
+      <div className="page settings">
+        <header className="page-head">
+          <h1>Settings</h1>
+          <Link className="btn" to="/">
+            Back to dashboard
+          </Link>
+        </header>
+        <form onSubmit={save} className="settings-form">
+          <fieldset>
+            <legend>Widgets</legend>
+            <ul className="plain">
+              {draft.widgets.map((w, i) => (
+                <li key={w.id} className="setting-row">
                   <label className="check">
                     <input
                       type="checkbox"
-                      checked={draft.providers[id].enabled}
-                      onChange={(e) => set({ providers: { ...draft.providers, [id]: { enabled: e.target.checked } } })}
+                      checked={w.visible}
+                      onChange={(e) => set({ widgets: draft.widgets.map((x) => (x.id === w.id ? { ...x, visible: e.target.checked } : x)) })}
                     />
-                    Enabled
+                    {WIDGET_NAMES[w.id]}
                   </label>
                   <span className="btn-group">
-                    {id === 'google' && (
-                      <a className="btn" href="/api/google/connect">
-                        Connect Google Calendar
-                      </a>
-                    )}
-                    <button type="button" className="btn" onClick={() => void disconnect(id)}>
-                      Disconnect
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={i === 0}
+                      onClick={() => moveWidget(i, -1)}
+                      aria-label={`Move ${WIDGET_NAMES[w.id]} up`}
+                    >
+                      Up
+                    </button>
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={i === draft.widgets.length - 1}
+                      onClick={() => moveWidget(i, 1)}
+                      aria-label={`Move ${WIDGET_NAMES[w.id]} down`}
+                    >
+                      Down
                     </button>
                   </span>
                 </li>
-              );
-            })}
-          </ul>
-        </fieldset>
+              ))}
+            </ul>
+          </fieldset>
 
-        <fieldset>
-          <legend>Privacy</legend>
-          <label className="check">
-            <input type="checkbox" checked={draft.privacy.enabled} onChange={(e) => set({ privacy: { enabled: e.target.checked } })} />
-            Privacy mode (mask event and assignment titles, course names and health values)
-          </label>
-        </fieldset>
-
-        <fieldset>
-          <legend>AI briefing</legend>
-          <label className="check">
-            <input type="checkbox" checked={draft.ai.enabled} onChange={(e) => set({ ai: { ...draft.ai, enabled: e.target.checked } })} />
-            Enable AI briefing
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={draft.ai.includeTitles} onChange={(e) => set({ ai: { ...draft.ai, includeTitles: e.target.checked } })} />
-            Include calendar and Canvas titles
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={draft.ai.includeHealth} onChange={(e) => set({ ai: { ...draft.ai, includeHealth: e.target.checked } })} />
-            Include Garmin health data (off by default)
-          </label>
-          <p className="muted">
-            Titles and health data are sent to an external model only if you tick the boxes above. Nothing is sent while AI briefing is disabled.
-          </p>
-          <p className="disclosure">{resp.aiDisclosure}</p>
-        </fieldset>
-
-        {message && <p role="status">{message}</p>}
-        {issues.length > 0 && (
-          <ul className="form-error" role="alert">
-            {issues.map((m, i) => (
-              <li key={i}>{m}</li>
+          <fieldset>
+            <legend>Bus stops (up to 3)</legend>
+            {stops.map((s, i) => (
+              <div key={i} className="stop-edit">
+                <label>
+                  Stop code (5 digits)
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="\d{5}"
+                    maxLength={5}
+                    value={s.code}
+                    onChange={(e) => setStops(stops.map((x, j) => (j === i ? { ...x, code: e.target.value.replace(/\D/g, '') } : x)))}
+                  />
+                </label>
+                <label>
+                  Nickname
+                  <input
+                    type="text"
+                    maxLength={40}
+                    value={s.nickname}
+                    onChange={(e) => setStops(stops.map((x, j) => (j === i ? { ...x, nickname: e.target.value } : x)))}
+                  />
+                </label>
+                <label>
+                  Services (comma-separated, blank for all)
+                  <input
+                    type="text"
+                    placeholder="e.g. 36, 36A, 124"
+                    value={s.services}
+                    onChange={(e) => setStops(stops.map((x, j) => (j === i ? { ...x, services: e.target.value } : x)))}
+                  />
+                </label>
+                <button type="button" className="btn" onClick={() => setStops(stops.filter((_, j) => j !== i))}>
+                  Remove stop
+                </button>
+              </div>
             ))}
-          </ul>
-        )}
-        <button type="submit" className="btn primary" disabled={saving}>
-          {saving ? 'Saving…' : 'Save settings'}
-        </button>
-      </form>
-    </div>
+            {stops.length < 3 && (
+              <button type="button" className="btn" onClick={() => setStops([...stops, { code: '', nickname: '', services: '' }])}>
+                Add bus stop
+              </button>
+            )}
+          </fieldset>
+
+          <fieldset>
+            <legend>Weather area</legend>
+            {areaOptions.length === 0 ? (
+              <p className="muted">Forecast areas appear here after the first weather fetch. Wait a moment, then reload this page.</p>
+            ) : (
+              <label>
+                Forecast area
+                <select value={draft.weather.area ?? ''} onChange={(e) => set({ weather: { area: e.target.value === '' ? null : e.target.value } })}>
+                  <option value="">Not chosen</option>
+                  {areaOptions.map((a) => (
+                    <option key={a} value={a}>
+                      {a}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </fieldset>
+
+          <fieldset>
+            <legend>Google Calendar IDs</legend>
+            {draft.calendar.calendarIds.map((c, i) => (
+              <div key={i} className="inline-row">
+                <input
+                  type="text"
+                  aria-label={`Calendar ID ${i + 1}`}
+                  value={c}
+                  onChange={(e) => set({ calendar: { calendarIds: draft.calendar.calendarIds.map((x, j) => (j === i ? e.target.value : x)) } })}
+                />
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={draft.calendar.calendarIds.length <= 1}
+                  onClick={() => set({ calendar: { calendarIds: draft.calendar.calendarIds.filter((_, j) => j !== i) } })}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+            <button type="button" className="btn" onClick={() => set({ calendar: { calendarIds: [...draft.calendar.calendarIds, ''] } })}>
+              Add calendar ID
+            </button>
+            <p className="muted">Use "primary" for your main calendar.</p>
+          </fieldset>
+
+          <fieldset>
+            <legend>Providers</legend>
+            <ul className="plain">
+              {PROVIDER_IDS.map((id) => {
+                const setup = resp.providerSetup[id];
+                return (
+                  <li key={id} className="provider-row">
+                    <div>
+                      <strong>{providerName(id)}</strong>
+                      <p className="muted">{setup.configured ? 'Configured' : `Setup needed: ${setup.requirement ?? 'not configured'}`}</p>
+                    </div>
+                    <label className="check">
+                      <input
+                        type="checkbox"
+                        checked={draft.providers[id].enabled}
+                        onChange={(e) => set({ providers: { ...draft.providers, [id]: { enabled: e.target.checked } } })}
+                      />
+                      Enabled
+                    </label>
+                    <span className="btn-group">
+                      {id === 'google' && (
+                        <a className="btn" href="/api/google/connect">
+                          Connect Google Calendar
+                        </a>
+                      )}
+                      <button type="button" className="btn" onClick={() => void disconnect(id)}>
+                        Disconnect
+                      </button>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </fieldset>
+
+          <fieldset>
+            <legend>Privacy</legend>
+            <label className="check">
+              <input type="checkbox" checked={draft.privacy.enabled} onChange={(e) => set({ privacy: { enabled: e.target.checked } })} />
+              Privacy mode (mask event and assignment titles, course names and health values)
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>AI briefing</legend>
+            <label className="check">
+              <input type="checkbox" checked={draft.ai.enabled} onChange={(e) => set({ ai: { ...draft.ai, enabled: e.target.checked } })} />
+              Enable AI briefing
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={draft.ai.includeTitles}
+                onChange={(e) => set({ ai: { ...draft.ai, includeTitles: e.target.checked } })}
+              />
+              Include calendar and Canvas titles
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={draft.ai.includeHealth}
+                onChange={(e) => set({ ai: { ...draft.ai, includeHealth: e.target.checked } })}
+              />
+              Include Garmin health data (off by default)
+            </label>
+            <p className="muted">
+              Titles and health data are sent to an external model only if you tick the boxes above. Nothing is sent while AI briefing is disabled.
+            </p>
+            <p className="disclosure">{resp.aiDisclosure}</p>
+          </fieldset>
+
+          {message && <p role="status">{message}</p>}
+          {issues.length > 0 && (
+            <ul className="form-error" role="alert">
+              {issues.map((m, i) => (
+                <li key={i}>{m}</li>
+              ))}
+            </ul>
+          )}
+          <button type="submit" className="btn primary" disabled={saving}>
+            {saving ? 'Saving…' : 'Save settings'}
+          </button>
+        </form>
+      </div>
+    </Shell>
   );
 }

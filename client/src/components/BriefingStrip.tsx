@@ -2,6 +2,9 @@ import { useState } from 'react';
 import type { Briefing, DashboardResponse } from '../../../shared/contracts';
 import { bulletText } from '../../../shared/display/privacy';
 import { fmtTime } from '../../../shared/display/time';
+import Icon, { type IconName } from './Icon';
+
+const SOURCE_ICON: Record<string, IconName> = { google: 'calendar', canvas: 'book', weather: 'cloud-sun', garmin: 'activity' };
 
 const KEY = 'desk.briefingCollapsed';
 
@@ -52,11 +55,14 @@ export default function BriefingStrip({ overview, aiBriefing, ai, privacy, onGen
   return (
     <section className="briefing" aria-label="Briefing">
       <div className="briefing-head">
+        <span className="tile" aria-hidden="true">
+          <Icon name="sparkle" size={20} />
+        </span>
         <h2>{shown.kind === 'ai' ? 'AI briefing' : 'Overview'}</h2>
-        <span className="muted">Generated {fmtTime(shown.generatedAt)}</span>
+        <span className="meta">Generated {fmtTime(shown.generatedAt)}</span>
         <div className="spacer" />
         {ai.available && (
-          <button type="button" className="btn small" onClick={generate} disabled={busy}>
+          <button type="button" className="btn small primary" onClick={generate} disabled={busy}>
             {busy ? 'Generating…' : `Generate AI briefing (${ai.remainingToday} left today)`}
           </button>
         )}
@@ -71,13 +77,22 @@ export default function BriefingStrip({ overview, aiBriefing, ai, privacy, onGen
           ) : (
             <ul className="bullets">
               {shown.bullets.slice(0, 3).map((b, i) => (
-                <li key={i}>
-                  <span>{bulletText(b, privacy)}</span>{' '}
-                  {b.sources.map((s) => (
-                    <span key={s} className="chip">
-                      {s}
-                    </span>
-                  ))}
+                <li key={i} className={`tint tint-${(i % 3) + 1}`}>
+                  <span className="li-icon" aria-hidden="true">
+                    <Icon name={SOURCE_ICON[b.sources[0] ?? ''] ?? 'sparkle'} size={18} />
+                  </span>
+                  <div className="li-body">
+                    <span>{bulletText(b, privacy)}</span>
+                    {b.sources.length > 0 && (
+                      <span className="chips">
+                        {b.sources.map((src) => (
+                          <span key={src} className="chip">
+                            {src}
+                          </span>
+                        ))}
+                      </span>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>

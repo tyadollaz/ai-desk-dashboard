@@ -1,9 +1,10 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { ProviderId, RefreshResponse, WidgetEnvelope } from '../../../shared/contracts';
 import { fmtTime } from '../../../shared/display/time';
 import { safeExternalUrl } from '../../../shared/display/url';
 import ErrorBoundary from './ErrorBoundary';
+import Icon, { type IconName } from './Icon';
 
 export interface WidgetProps<T> {
   env: WidgetEnvelope<T>;
@@ -20,6 +21,14 @@ const LABELS: Record<ProviderId, { name: string; open: string }> = {
   canvas: { name: 'Canvas', open: 'Canvas' },
   google: { name: 'Google Calendar', open: 'Google Calendar' },
   garmin: { name: 'Garmin activity', open: 'Garmin Connect' },
+};
+
+const ICONS: Record<ProviderId, IconName> = {
+  lta: 'bus',
+  weather: 'cloud-sun',
+  canvas: 'book',
+  google: 'calendar',
+  garmin: 'activity',
 };
 
 export function providerName(id: ProviderId): string {
@@ -70,7 +79,31 @@ interface CardProps extends Omit<WidgetProps<unknown>, 'privacy'> {
   children?: ReactNode;
 }
 
+/** Marks the scroll area while more content is hidden below, so CSS can fade the bottom edge. */
+function useOverflowMark<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => {
+      el.dataset.overflow = el.scrollHeight - el.scrollTop - el.clientHeight > 2 ? 'more' : 'none';
+    };
+    check();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    for (const c of Array.from(el.children)) ro.observe(c);
+    el.addEventListener('scroll', check, { passive: true });
+    return () => {
+      ro.disconnect();
+      el.removeEventListener('scroll', check);
+    };
+  });
+  return ref;
+}
+
 export default function Card({ provider, env, now, onRefresh, refreshing, refreshStatus, className, children }: CardProps) {
+  const bodyRef = useOverflowMark<HTMLDivElement>();
   const lines = statusLines(env, now);
   const detail = safeExternalUrl(env.detailUrl);
   const cooldownUntil = env.nextAllowedRefreshAt;
@@ -81,11 +114,31 @@ export default function Card({ provider, env, now, onRefresh, refreshing, refres
   return (
     <section className={`card card-${provider} ${className ?? ''}`} aria-label={providerName(provider)}>
       <header className="card-head">
+        <span className="tile" aria-hidden="true">
+          <Icon name={ICONS[provider]} size={20} />
+        </span>
         <h2>{providerName(provider)}</h2>
         {env.mode === 'demo' && <span className="badge">Demo</span>}
+        <div className="spacer" />
+        {env.lastSuccessAt && <span className="meta">Updated {fmtTime(env.lastSuccessAt)}</span>}
+        {canRefresh && (
+          <button
+            type="button"
+            className={`icon-btn ${refreshing ? 'spinning' : ''}`}
+            onClick={onRefresh}
+            disabled={refreshing}
+            aria-label={`Refresh ${providerName(provider)}`}
+            title={refreshing ? 'Refreshing…' : `Refresh ${providerName(provider)}`}
+          >
+            <Icon name="refresh" size={18} />
+          </button>
+        )}
       </header>
       <div className={`status ${problem ? 'status-problem' : ''}`}>
-        <span>{lines.join(' · ')}</span>
+        <span className="pill">
+          <i className={`dot ${problem ? 'dot-warn' : 'dot-ok'}`} aria-hidden="true" />
+          {lines.join(' · ')}
+        </span>
         {env.connection === 'reauth_required' &&
           (provider === 'google' ? (
             <a className="btn small" href="/api/google/connect">
@@ -102,27 +155,21 @@ export default function Card({ provider, env, now, onRefresh, refreshing, refres
           </Link>
         )}
       </div>
-      <div className="card-body">
+      <div className="card-body" ref={bodyRef}>
         <ErrorBoundary label={providerName(provider)}>{children}</ErrorBoundary>
       </div>
       <footer className="card-foot">
         <p className="times">
           {env.sourceUpdatedAt && <span>Source {fmtTime(env.sourceUpdatedAt)}</span>}
           <span>Fetched {env.lastSuccessAt ? fmtTime(env.lastSuccessAt) : 'never'}</span>
+          {cooling && <span>Cooling down until {fmtTime(cooldownUntil)}</span>}
         </p>
-        <div className="foot-actions">
-          {cooling && <span className="muted">Cooling down until {fmtTime(cooldownUntil)}</span>}
-          {detail && (
-            <a href={detail} target="_blank" rel="noopener noreferrer" className="link">
-              Open in {LABELS[provider].open}
-            </a>
-          )}
-          {canRefresh && (
-            <button type="button" className="btn small" onClick={onRefresh} disabled={refreshing} aria-label={`Refresh ${providerName(provider)}`}>
-              {refreshing ? 'Refreshing…' : 'Refresh'}
-            </button>
-          )}
-        </div>
+        {detail && (
+          <a href={detail} target="_blank" rel="noopener noreferrer" className="link">
+            Open in {LABELS[provider].open}
+            <Icon name="arrow-up-right" size={16} />
+          </a>
+        )}
       </footer>
     </section>
   );

@@ -34,7 +34,11 @@ export default function Login() {
   return (
     <main className="login">
       <form onSubmit={submit} className="login-card">
+        <span className="logo" aria-hidden="true">
+          D
+        </span>
         <h1>AI Desk Dashboard</h1>
+        <p className="muted">Private desk. Sign in to continue.</p>
         <label htmlFor="pw">Password</label>
         <input
           id="pw"

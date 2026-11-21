@@ -1,8 +1,28 @@
 import type { BusData, BusStop } from '../../../shared/contracts';
-import { busArrivalViews, isBusStale } from '../../../shared/display/bus';
+import { busArrivalViews, isBusStale, occupancyText } from '../../../shared/display/bus';
 import { fmtTime } from '../../../shared/display/time';
 import Card, { hasData, type WidgetProps } from './Card';
-import type { WidgetEnvelope } from '../../../shared/contracts';
+import type { BusLoad, WidgetEnvelope } from '../../../shared/contracts';
+import Value from './Value';
+
+/** Occupancy as 1-3 filled segments: seats available, standing available, limited standing. */
+const LOADS: BusLoad[] = ['SEA', 'SDA', 'LSD'];
+function loadLevel(label: string | null): number {
+  const i = LOADS.findIndex((l) => occupancyText(l) === label);
+  return i + 1;
+}
+
+function LoadMeter({ label }: { label: string }) {
+  const level = loadLevel(label);
+  if (level === 0) return null;
+  return (
+    <span className={`load load-${level}`} role="img" aria-label={label} title={label}>
+      {[1, 2, 3].map((n) => (
+        <i key={n} className={n <= level ? 'on' : ''} />
+      ))}
+    </span>
+  );
+}
 
 function Stop({ stop, now, stale }: { stop: BusStop; now: number; stale: boolean }) {
   return (
@@ -27,14 +47,17 @@ function Stop({ stop, now, stale }: { stop: BusStop; now: number; stale: boolean
               ) : (
                 <ul className="plain etas">
                   {views.map((v, i) => (
-                    <li key={i} className={`eta ${v.kind}`}>
-                      <span className="num">{v.text}</span>
+                    <li key={i} className={`eta ${v.kind} ${i === 0 ? 'eta-first' : ''}`}>
+                      <span className="num">
+                        <Value text={v.text} />
+                      </span>
+                      {v.occupancy && <LoadMeter label={v.occupancy} />}
                       {v.scheduled && <span className="tag">Scheduled</span>}
-                      {v.occupancy && <span className="tag">{v.occupancy}</span>}
                     </li>
                   ))}
                 </ul>
               )}
+              {!allUpdate && views[0]?.occupancy && <span className="occ-note">Next bus: {views[0].occupancy}</span>}
             </li>
           );
         })}
