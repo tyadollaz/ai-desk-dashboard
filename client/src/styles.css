@@ -76,34 +76,21 @@ ul.plain { list-style: none; margin: 0; padding: 0; }
   .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cell-garmin { grid-column: 1 / -1; }
 }
-@media (min-width: 1200px) {
-  .grid { grid-template-columns: repeat(12, minmax(0, 1fr)); }
-  .cell-calendar { grid-column: span 5; }
-  .cell-canvas { grid-column: span 4; }
-  .cell-lta { grid-column: span 3; }
-  .cell-weather { grid-column: span 6; }
-  .cell-garmin { grid-column: span 6; }
-}
-@media (min-width: 640px) and (max-height: 700px) {
-  .time { font-size: 2.6rem; }
-  .page { padding-top: 12px; gap: 12px; }
-}
-
 /* Cards */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .card-head { display: flex; align-items: center; gap: 10px; }
 .card-head h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); }
 .badge { font-size: 0.75rem; border: 1px solid var(--accent); color: var(--accent); border-radius: 999px; padding: 0 8px; }
-.status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.9rem; color: var(--muted); overflow-wrap: anywhere; }
+.status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.9rem; color: var(--muted); overflow-wrap: break-word; }
 .status-problem { color: var(--accent); font-weight: 600; }
-.card-body { display: flex; flex-direction: column; gap: 12px; max-height: 360px; overflow-y: auto; overflow-x: hidden; min-width: 0; overflow-wrap: anywhere; }
+.card-body { display: flex; flex-direction: column; gap: 12px; max-height: 360px; overflow-y: auto; overflow-x: hidden; min-width: 0; overflow-wrap: break-word; }
 .card-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid var(--border); padding-top: 10px; font-size: 0.85rem; color: var(--muted); }
 .times { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .foot-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .card-fallback { padding: 16px; border: 1px dashed var(--border); border-radius: 12px; color: var(--muted); }
 .empty { color: var(--muted); padding: 8px 0; }
 .inline-error { color: var(--danger); }
-.big-text { font-size: 1.5rem; font-weight: 500; line-height: 1.25; overflow-wrap: anywhere; }
+.big-text { font-size: 1.5rem; font-weight: 500; line-height: 1.25; overflow-wrap: break-word; }
 .eyebrow { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 .coverage { font-size: 0.85rem; }
 .group { display: flex; flex-direction: column; gap: 6px; }
@@ -112,7 +99,7 @@ ul.plain { list-style: none; margin: 0; padding: 0; }
 .row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border); min-width: 0; }
 .row:last-child { border-bottom: 0; }
 .row-main { display: flex; flex-direction: column; min-width: 0; }
-.row-title { min-width: 0; overflow-wrap: anywhere; }
+.row-title { min-width: 0; overflow-wrap: break-word; }
 .row-when { color: var(--muted); font-variant-numeric: tabular-nums; flex-shrink: 0; text-align: right; }
 .row.ended { opacity: 0.65; }
 .tag { margin-left: 8px; font-size: 0.75rem; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 0 6px; }
@@ -132,7 +119,7 @@ ul.plain { list-style: none; margin: 0; padding: 0; }
 .stat { min-width: 0; }
 .stat.wide { grid-column: 1 / -1; }
 .stat dt { color: var(--muted); font-size: 0.85rem; }
-.stat dd { margin: 0; font-size: 1.3rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.stat dd { margin: 0; font-size: 1.3rem; font-variant-numeric: tabular-nums; overflow-wrap: break-word; }
 
 /* Login & forms */
 .login { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
@@ -145,7 +132,7 @@ label { display: flex; flex-direction: column; gap: 4px; }
 .check { flex-direction: row; align-items: center; gap: 12px; min-height: 44px; }
 .check input { width: 24px; height: 24px; accent-color: var(--accent); flex-shrink: 0; }
 .form-error { color: var(--danger); }
-.disclosure { white-space: pre-wrap; border-left: 3px solid var(--accent); padding-left: 12px; overflow-wrap: anywhere; }
+.disclosure { white-space: pre-wrap; border-left: 3px solid var(--accent); padding-left: 12px; overflow-wrap: break-word; }
 
 .settings-form { display: flex; flex-direction: column; gap: 16px; max-width: 860px; }
 fieldset { border: 1px solid var(--border); border-radius: 14px; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
@@ -155,6 +142,44 @@ legend { padding: 0 8px; color: var(--accent); }
 .btn-group { display: flex; flex-wrap: wrap; gap: 8px; }
 .stop-edit { display: grid; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
 .inline-row { display: flex; gap: 8px; }
+
+/* Responsive overrides (after base rules so they win) */
+@media (min-width: 1200px) {
+  .grid { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+  .cell-calendar, .cell-canvas, .cell-lta, .cell-weather { grid-column: span 3; }
+  .cell-garmin { grid-column: 1 / -1; }
+  /* Keep the first row short enough that every card's top edge is on screen at 1440x900. */
+  .card-body { max-height: clamp(200px, calc(100vh - 640px), 360px); }
+}
+/* Wide desktops (>= 1400px, normal height): all five cards in one row so none sits below the fold. */
+@media (min-width: 1400px) and (min-height: 701px) {
+  .grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .cell-calendar, .cell-canvas, .cell-lta, .cell-weather, .cell-garmin { grid-column: span 1; }
+  .stats { grid-template-columns: 1fr; }
+}
+/* Short, wide screens (e.g. 1024x600 wall display): two rows so calendar/canvas get wide columns.
+   Row 1 = bus, weather, garmin (glanceable); row 2 = calendar, canvas. */
+@media (min-width: 900px) and (max-height: 700px) {
+  .time { font-size: 2.6rem; }
+  .date { margin-top: 2px; }
+  .page { padding: 10px 16px 24px; gap: 10px; }
+  .grid { grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 12px; }
+  .cell-lta { grid-column: span 4; order: 1; }
+  .cell-weather { grid-column: span 4; order: 2; }
+  .cell-garmin { grid-column: span 4; order: 3; }
+  .cell-calendar, .cell-canvas { grid-column: span 6; order: 4; }
+  .banner { padding: 4px 12px; }
+  .briefing { padding: 8px 16px; gap: 4px; }
+  .bullets { gap: 0; }
+  .card { padding: 10px 12px; gap: 6px; }
+  .card-body { max-height: 150px; }
+  .card-foot { padding-top: 6px; }
+  .stats { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
+}
+@media (min-width: 640px) and (max-height: 700px) and (max-width: 899px) {
+  .time { font-size: 2.6rem; }
+  .page { padding-top: 12px; gap: 12px; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }

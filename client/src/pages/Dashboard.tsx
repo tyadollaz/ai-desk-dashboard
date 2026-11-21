@@ -128,7 +128,8 @@ export default function Dashboard() {
     await load();
   }
 
-  const privacy = settings?.privacy.enabled ?? false;
+  // Fail closed: keep titles and health values masked until the owner's privacy setting has loaded.
+  const privacy = settings ? settings.privacy.enabled : true;
   const widgets = settings?.widgets.filter((w) => w.visible) ?? [];
 
   function renderWidget(id: WidgetId) {

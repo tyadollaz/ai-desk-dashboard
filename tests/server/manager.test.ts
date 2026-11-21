@@ -208,4 +208,94 @@ describe('ProviderManager', () => {
     });
     expect((await demoMgr.getEnvelope('lta')).data).toBeNull();
   });
+
+  it('a configKey change keeps an active Retry-After cooldown', async () => {
+    let n = 0;
+    const adapter = fakeAdapter(
+      'weather',
+      async () => {
+        n++;
+        if (n === 2) throw new ProviderError('rate_limited', 'slow down', { retryAfterMs: 120_000 });
+        return { n };
+      },
+      { configKey: (s: Settings) => s.weather.area ?? '' },
+    );
+    const { manager, settings, clock } = setup({ weather: adapter });
+    await manager.refresh('weather', { manual: false });
+    await manager.whenIdle();
+    clock.advance(11_000);
+    await manager.refresh('weather', { manual: true });
+    await manager.whenIdle();
+    settings.patch({ weather: { area: 'Bedok' } });
+    manager.onSettingsChanged();
+    expect((await manager.getEnvelope('weather')).data).toBeNull(); // snapshot discarded
+    expect(await manager.refresh('weather', { manual: true })).toBe('cooldown');
+    expect(n).toBe(2);
+    clock.advance(121_000);
+    expect(await manager.refresh('weather', { manual: true })).toBe('accepted');
+  });
+
+  it('onSettingsChanged clears the auth block only for changed providers or explicit tokensChanged', async () => {
+    const mk = (id: ProviderId) =>
+      fakeAdapter(id, async () => {
+        throw new ProviderError('auth_failed', 'bad creds');
+      });
+    const { manager, settings, clock } = setup({ canvas: mk('canvas'), google: mk('google'), lta: mk('lta') });
+    for (const id of ['canvas', 'google', 'lta'] as const) await manager.refresh(id, { manual: false });
+    await manager.whenIdle();
+    const blocked = async (id: ProviderId) => (await manager.getEnvelope(id)).connection === 'reauth_required';
+    expect(await blocked('canvas')).toBe(true);
+    expect(await blocked('google')).toBe(true);
+
+    manager.onSettingsChanged(); // nothing relevant changed
+    expect(await blocked('canvas')).toBe(true);
+    expect(await blocked('google')).toBe(true);
+
+    manager.onSettingsChanged({ tokensChanged: ['google'] });
+    clock.advance(REFRESH_POLICY.google.intervalMs + 1000);
+    expect((manager as unknown as { st(id: ProviderId): { blocked: boolean } }).st('google').blocked).toBe(false);
+    expect((manager as unknown as { st(id: ProviderId): { blocked: boolean } }).st('canvas').blocked).toBe(true);
+
+    // toggling enabled for canvas clears only canvas
+    const cur = settings.get();
+    settings.patch({ providers: { ...cur.providers, lta: { enabled: !cur.providers.lta.enabled } } });
+    manager.onSettingsChanged();
+    expect((manager as unknown as { st(id: ProviderId): { blocked: boolean } }).st('lta').blocked).toBe(false);
+    expect((manager as unknown as { st(id: ProviderId): { blocked: boolean } }).st('canvas').blocked).toBe(true);
+  });
+
+  it('a retained snapshot is stale (not fresh) while reauth is required', async () => {
+    let fail = false;
+    const { manager, clock } = setup({
+      canvas: fakeAdapter('canvas', async () => {
+        if (fail) throw new ProviderError('auth_failed', 'bad creds');
+        return { items: [1] };
+      }),
+    });
+    await manager.refresh('canvas', { manual: false });
+    await manager.whenIdle();
+    expect((await manager.getEnvelope('canvas')).freshness).toBe('fresh');
+    fail = true;
+    clock.advance(11_000);
+    await manager.refresh('canvas', { manual: true });
+    await manager.whenIdle();
+    expect(await manager.getEnvelope('canvas')).toMatchObject({ connection: 'reauth_required', freshness: 'stale', data: { items: [1] } });
+  });
+
+  it('passes the abort signal and previous data to adapters', async () => {
+    const seen: unknown[] = [];
+    const adapter = fakeAdapter('lta', async () => ({ v: 1 }), {
+      fetch: (async (_s: Settings, signal: AbortSignal, previous: unknown) => {
+        seen.push([signal instanceof AbortSignal, previous]);
+        return { data: { v: seen.length }, sourceUpdatedAt: null, validUntil: null, coverage: null };
+      }) as never,
+    });
+    const { manager, clock } = setup({ lta: adapter });
+    await manager.refresh('lta', { manual: false });
+    await manager.whenIdle();
+    clock.advance(11_000);
+    await manager.refresh('lta', { manual: true });
+    await manager.whenIdle();
+    expect(seen).toEqual([[true, undefined], [true, { v: 1 }]]);
+  });
 });

@@ -81,7 +81,7 @@ export const api = {
   patchSettings: (patch: SettingsPatch) => request<SettingsResponse>('/settings', { method: 'PATCH', body: patch }),
   refresh: (id: ProviderId) => request<RefreshResponse>(`/providers/${id}/refresh`, { method: 'POST' }),
   disconnect: (id: ProviderId) => request<void>(`/providers/${id}/disconnect`, { method: 'POST' }),
-  briefing: () => request<{ briefing: Briefing }>('/briefing', { method: 'POST' }),
+  briefing: () => request<{ briefing: Briefing; ai: DashboardResponse['ai'] }>('/briefing', { method: 'POST' }),
 };
 
 export type { Settings };

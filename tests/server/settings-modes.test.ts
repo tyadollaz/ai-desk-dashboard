@@ -73,7 +73,12 @@ describe('demo and live modes', () => {
     for (const id of PROVIDER_IDS) {
       const e = res.json().envelopes[id];
       expect(e.mode).toBe('live');
-      expect(e.connection).toBe('needs_setup');
+      if (id === 'weather') {
+        // data.gov.sg works keyless: ready to fetch, but nothing has been fetched yet (no demo data).
+        expect(e.connection).toBe('connected');
+      } else {
+        expect(e.connection).toBe('needs_setup');
+      }
       expect(e.data).toBeNull();
     }
     expect(res.body).not.toMatch(/\[Demo\]|Demo stop/);
@@ -81,10 +86,10 @@ describe('demo and live modes', () => {
     expect(snaps.n).toBe(0);
     const setup = (await live.inject({ url: '/api/settings', headers: { cookie: lc } })).json().providerSetup;
     expect(setup.lta.configured).toBe(false);
-    expect(setup.lta.requirement).toMatch(/not implemented/);
+    expect(setup.lta.requirement).toMatch(/LTA_ACCOUNT_KEY/);
   });
 
-  it('refresh/disconnect routes: unknown provider 404, disconnect disables, google stubs 501', async () => {
+  it('refresh/disconnect routes: unknown provider 404, disconnect disables, google connect redirects to needs_setup, callback rejects bad state', async () => {
     const { app } = await makeApp({ DEMO_MODE: 'true' });
     apps.push(app);
     const cookie = await loginCookie(app);
@@ -97,7 +102,11 @@ describe('demo and live modes', () => {
     const d = (await app.inject({ url: '/api/dashboard', headers: { cookie } })).json();
     expect(d.envelopes.weather.connection).toBe('disabled');
     expect(d.envelopes.weather.data).toBeNull();
-    expect((await app.inject({ url: '/api/google/connect', headers: { cookie } })).statusCode).toBe(501);
+    const gc = await app.inject({ url: '/api/google/connect', headers: { cookie } });
+    expect(gc.statusCode).toBe(302);
+    expect(gc.headers.location).toBe('/settings?google=needs_setup');
+    expect((await app.inject({ url: '/api/google/callback', headers: { cookie } })).statusCode).toBe(400);
+    expect((await app.inject({ url: '/api/google/callback?code=x&state=bad', headers: { cookie } })).statusCode).toBe(400);
     expect((await app.inject({ url: '/api/nope', headers: { cookie } })).json().error.code).toBe('not_found');
     expect((await app.inject({ method: 'POST', url: '/api/briefing', headers: h })).statusCode).toBe(503);
   });

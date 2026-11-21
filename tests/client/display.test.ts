@@ -150,6 +150,14 @@ describe('calendar', () => {
     expect(groups[0]?.dayKey).toBe('2026-11-21');
     expect(todaysAgenda([e], NOW)).toHaveLength(1);
   });
+  it("includes timed events that began yesterday but overlap today's SGT day", () => {
+    const overnight = timed('o', '2026-11-20T14:00:00Z', '2026-11-20T17:30:00Z'); // 22:00 Fri - 01:30 Sat SGT
+    const endsAtMidnight = timed('m', '2026-11-20T14:00:00Z', '2026-11-20T16:00:00Z'); // ends exactly 00:00 Sat SGT
+    const tomorrow = timed('t', '2026-11-21T16:00:00Z', '2026-11-21T17:00:00Z'); // starts 00:00 Sun SGT
+    const multiDay = timed('d', '2026-11-19T10:00:00Z', '2026-11-22T10:00:00Z');
+    const ids = todaysAgenda([tomorrow, endsAtMidnight, overnight, multiDay], NOW).map((e) => e.id);
+    expect(ids).toEqual(['d', 'o']);
+  });
   it('keeps events with the same title as separate rows', () => {
     const a = timed('cal:1', '2026-11-21T06:00:00Z', '2026-11-21T07:00:00Z');
     const b = timed('cal:2', '2026-11-21T08:00:00Z', '2026-11-21T09:00:00Z');

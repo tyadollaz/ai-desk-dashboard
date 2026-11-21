@@ -64,13 +64,17 @@ export function eventWhenLabel(e: CalendarEvent): string {
   return `${fmtWeekdayDayMonth(eventStartMs(e))}, ${eventTimeLabel(e)}`;
 }
 
-/** Events shown on the start day; multi-day all-day events that started earlier also appear on today. */
+/** Events overlapping today in SGT (start < tomorrow 00:00 and end > today 00:00), including ones that began earlier. */
 export function todaysAgenda(events: CalendarEvent[], nowMs: number): CalendarEvent[] {
   const today = sgDateKey(nowMs);
   const todayStart = dateKeyToMs(today);
-  return sortEvents(events).filter(
-    (e) => eventDayKey(e) === today || (e.allDay && eventStartMs(e) < todayStart && eventEndMs(e) > todayStart),
-  );
+  const tomorrowStart = todayStart + DAY_MS;
+  return sortEvents(events).filter((e) => {
+    if (eventDayKey(e) === today) return true; // also covers zero-length events at 00:00
+    const s = eventStartMs(e);
+    const en = eventEndMs(e);
+    return s < tomorrowStart && en > todayStart;
+  });
 }
 
 export interface DayGroup {

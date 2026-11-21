@@ -102,14 +102,37 @@ describe('CSRF', () => {
 });
 
 describe('config', () => {
+  const PROD = {
+    NODE_ENV: 'production',
+    APP_ORIGIN: 'https://desk.example.com',
+    SESSION_SECRET: 's'.repeat(40),
+    OWNER_PASSWORD_HASH: '$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQ$aGFzaGhhc2hoYXNo',
+    TOKEN_ENCRYPTION_KEY: Buffer.alloc(32).toString('base64'),
+  };
+
   it('production startup fails listing missing secrets and invalid key length', async () => {
     const { loadConfig } = await import('../../server/config.js');
     expect(() => loadConfig({ NODE_ENV: 'production' })).toThrow(/SESSION_SECRET, TOKEN_ENCRYPTION_KEY, OWNER_PASSWORD_HASH/);
-    expect(() =>
-      loadConfig({ NODE_ENV: 'production', SESSION_SECRET: 'x', OWNER_PASSWORD_HASH: 'h', TOKEN_ENCRYPTION_KEY: Buffer.alloc(16).toString('base64') }),
-    ).toThrow(/32 bytes/);
-    const ok = loadConfig({ NODE_ENV: 'production', SESSION_SECRET: 'x', OWNER_PASSWORD_HASH: 'h', TOKEN_ENCRYPTION_KEY: Buffer.alloc(32).toString('base64') });
-    expect(ok.warnings).toEqual([]);
+    expect(() => loadConfig({ ...PROD, TOKEN_ENCRYPTION_KEY: Buffer.alloc(16).toString('base64') })).toThrow(/32 bytes/);
+    expect(loadConfig(PROD).warnings).toEqual([]);
+  });
+
+  it('production requires an explicit APP_ORIGIN, https unless localhost', async () => {
+    const { loadConfig } = await import('../../server/config.js');
+    expect(() => loadConfig({ ...PROD, APP_ORIGIN: undefined })).toThrow(/APP_ORIGIN must be set/);
+    expect(() => loadConfig({ ...PROD, APP_ORIGIN: 'http://desk.example.com' })).toThrow(/https/);
+    expect(() => loadConfig({ ...PROD, APP_ORIGIN: 'http://192.168.1.5:3000' })).toThrow(/https/);
+    for (const origin of ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://[::1]:3000', 'https://desk.example.com']) {
+      expect(loadConfig({ ...PROD, APP_ORIGIN: origin }).appOrigin).toBe(origin);
+    }
+  });
+
+  it('validates the password hash format and session secret strength', async () => {
+    const { loadConfig } = await import('../../server/config.js');
+    expect(() => loadConfig({ ...PROD, OWNER_PASSWORD_HASH: 'plaintext' })).toThrow(/argon2/);
+    expect(() => loadConfig({ ...PROD, OWNER_PASSWORD_HASH: '$2b$10$abcdefghijklmnopqrstuv' })).toThrow(/argon2/);
+    expect(() => loadConfig({ ...PROD, SESSION_SECRET: 'short' })).toThrow(/SESSION_SECRET/);
+    expect(() => loadConfig({ ...PROD, SESSION_SECRET: 'replace-me' })).toThrow(/SESSION_SECRET/);
   });
 
   it('non-production: demo password only for DEMO_MODE without a hash; live without hash refuses login', async () => {
