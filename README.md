@@ -7,7 +7,7 @@ The app runs in one of two modes:
 - **Live mode** uses your real provider credentials and the database file `data/dashboard.db`.
 - **Demo mode** (`DEMO_MODE=true`) uses synthetic data, shows a banner, contacts no provider, and uses a separate database file, `data/dashboard-demo.db`. Demo and live data never share a file.
 
-Integration status (what has and has not been verified against real services) is in [docs/INTEGRATION-STATUS.md](docs/INTEGRATION-STATUS.md).
+Integration status (what has been verified against real services) is kept as a local report, `docs/INTEGRATION-STATUS.md`, which is not committed because it records personal account data.
 
 ## Requirements
 
@@ -187,4 +187,4 @@ These scripts have not been run against a real volume.
 - `deploy/` Compose file, Caddyfile, backup and restore scripts.
 - `docs/` integration status and the Garmin API reference.
 
-See [docs/INTEGRATION-STATUS.md](docs/INTEGRATION-STATUS.md) for the verification record.
+The verification record is kept locally in `docs/INTEGRATION-STATUS.md` (not committed).
