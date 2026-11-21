@@ -6,3 +6,5 @@ dist
 data/
 test-results
 playwright-report
+.DS_Store
+docs/garmin-personal-api.pdf

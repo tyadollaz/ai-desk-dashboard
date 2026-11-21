@@ -36,10 +36,37 @@ async function readPassword(): Promise<string> {
   });
 }
 
+const writeEnv = process.argv.includes('--write-env');
 const password = await readPassword();
 if (password.length < 8) {
   console.error('Password must be at least 8 characters.');
   process.exit(1);
 }
+if (writeEnv && process.stdin.isTTY) {
+  process.stderr.write('Confirm password: ');
+  if ((await readPassword()) !== password) {
+    console.error('Passwords did not match. Nothing was changed.');
+    process.exit(1);
+  }
+}
 // argon2id (library default) with OWASP-recommended cost parameters.
-console.log(await hash(password, { memoryCost: 19456, timeCost: 2, parallelism: 1 }));
+const hashed = await hash(password, { memoryCost: 19456, timeCost: 2, parallelism: 1 });
+
+if (!writeEnv) {
+  console.log(hashed);
+} else {
+  // Write the hash into ./.env (single-quoted because it contains `$`), never printing it.
+  const { existsSync, readFileSync, writeFileSync } = await import('node:fs');
+  const path = '.env';
+  if (!existsSync(path)) {
+    console.error('No .env file in this folder. Copy .env.example to .env first.');
+    process.exit(1);
+  }
+  const line = `OWNER_PASSWORD_HASH='${hashed}'`;
+  const text = readFileSync(path, 'utf8');
+  const next = /^OWNER_PASSWORD_HASH=.*$/m.test(text)
+    ? text.replace(/^OWNER_PASSWORD_HASH=.*$/m, () => line)
+    : `${text.trimEnd()}\n${line}\n`;
+  writeFileSync(path, next, { mode: 0o600 });
+  console.error('Saved. OWNER_PASSWORD_HASH in .env is set; use this password to log in to the dashboard.');
+}
